@@ -19,12 +19,12 @@ namespace Log2Excel
         /// <summary>
         /// Save general environment variables for application
         /// </summary>
-        private Hashtable htbEnvironmentVariables = new ();
+        private Hashtable htbEnvironmentVariables = new();
 
         /// <summary>
         /// Map command between DZS vs CISCO
         /// </summary>
-        private List<(string, string)> mapCommands = new ();
+        private List<(string, string)> mapCommands = new();
 
         // Các Device Prefix và Suffix sẽ được lưu dưới dạng key trong Dic
         // Mỗi key sẽ chứa một tập các String
@@ -199,5 +199,73 @@ namespace Log2Excel
         {
 
         }
+    }
+
+    public class ExportExcelHandler
+    {
+        public void Export(List<CommandBlockMapper> commandBlockMappers)
+        {
+
+        }
+    }
+
+    public class CommandBlockManager
+    {
+        public List<CommandBlockMapper> LoadDataLogFile(string[] files)
+        {
+            foreach (string file in files)
+            {
+
+            }
+
+            return new List<CommandBlockMapper>();
+        }
+    }
+
+    public class CommandBlockMapper
+    {
+        public Guid Id = new Guid();
+        public readonly CommandBlock DzsCommand;
+        public readonly CommandBlock CiscoCommand;
+
+        public string Router
+        {
+            get
+            {
+                if (DzsCommand != null
+                    && CiscoCommand != null)
+                {
+                    if (DzsCommand.Router == CiscoCommand.Router)
+                    {
+                        return DzsCommand.Router;
+                    }
+
+                    throw new Exception("Router not match!!!");
+                }
+
+                return string.Empty;
+            }
+        }
+        public CommandBlockMapper(CommandBlock dzsCommand, CommandBlock ciscoCommand)
+        {
+            DzsCommand = dzsCommand;
+            CiscoCommand = ciscoCommand;
+        }
+    }
+
+    public class CommandBlock
+    {
+        public Guid Id = new Guid();
+        public readonly string Router;
+        public readonly Queue<string> Contents;
+        public readonly string Command;
+        public CommandBlock(string router, Queue<string> contents, string command)
+        {
+            Router = router;
+            Contents = contents;
+            Command = command;
+        }
+
+        public int Length => Contents == null ? 0 : Contents.Count;
     }
 }
