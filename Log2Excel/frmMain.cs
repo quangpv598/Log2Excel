@@ -1,5 +1,9 @@
-﻿using ClosedXML;
+﻿using Accessibility;
+using ClosedXML;
 using ClosedXML.Excel;
+using DocumentFormat.OpenXml.ExtendedProperties;
+using DocumentFormat.OpenXml.Spreadsheet;
+using DocumentFormat.OpenXml.VariantTypes;
 using ExcelDataReader;
 using System.Collections;
 using System.Data;
@@ -24,7 +28,10 @@ namespace Log2Excel
         /// <summary>
         /// Map command between DZS vs CISCO
         /// </summary>
-        private List<(string, string)> mapCommands = new();
+        private List<CommandMapper> mapCommands = new();
+
+
+        private List<DeviceConfig> deviceConfigs = new();
 
         // Các Device Prefix và Suffix sẽ được lưu dưới dạng key trong Dic
         // Mỗi key sẽ chứa một tập các String
@@ -72,117 +79,31 @@ namespace Log2Excel
             DataTable dtMapCommand = dataSet.Tables[1];
             foreach (DataRow dr in dtMapCommand.Rows)
             {
-                mapCommands.Add((dr["DZS"].ToString(), dr["CISCO"].ToString()));
-            }
-        }
-
-        private void btnConvert_Click(object sender, EventArgs e)
-        {
-            if (string.IsNullOrEmpty("txtLogPath.Text"))
-            {
-                MessageBox.Show("Please select a log file.");
-                return;
-            }
-
-            //1. Xoá dữ liệu
-            dicDeviceLog.Clear();
-
-            //2. Nạp dữ liệu khởi tạo cho từ điển chứa dữ liệu
-            var deviceSuffix = "txtDeviceSuffix.Text".Split(';');
-            foreach (string suffix in deviceSuffix)
-            {
-                string fullDeviceName = "txtDevicePrefix.Text" + suffix;
-                // Nếu tên thiết bị chưa có trong từ điển, thì thêm vào từ điển
-                if (!dicDeviceLog.ContainsKey(fullDeviceName))
+                mapCommands.Add(new CommandMapper
                 {
-                    dicDeviceLog.Add(fullDeviceName, new Queue<string>());
-                }
+                    Key = dr["KEY"].ToString(),
+                    DzsCommand = dr["DZS"].ToString(),
+                    CiscoCommnad = dr["CISCO"].ToString()
+                });
             }
 
-            //3. Duyệt các dòng, ghi dữ liệu vào từ điển
-            List<string> lines = new();
-
-            //foreach(var file in fdl.FileNames)
-            //{
-            //    var currentLines = File.ReadAllLines(file);
-
-            //    lines = lines.Concat(currentLines).ToList();
-            //}
-
-            for (int i = 0; i < lines.Count; i++)
+            // Load device config
+            foreach (string router in htbEnvironmentVariables["ROUTERS"].ToString().Split(';'))
             {
-                string line = lines[i];
-
-                // Kiểm tra nếu dòng chứa lệnh show
-                if (line.Replace(" ", "").ToLower().Contains("#show"))
+                deviceConfigs.Add(new DeviceConfig
                 {
-                    // duyệt qua tên các thiết bị đã lưu trước đó
-                    foreach (string fullDeviceName in dicDeviceLog.Keys)
-                    {
-                        // Nếu dòng mà bắt đầu bằng tên thiết bị
-                        if (line.StartsWith(fullDeviceName))
-                        {
-                            var queueString = dicDeviceLog[fullDeviceName];
+                    Prefix = htbEnvironmentVariables["DZS_PREFIX"].ToString(),
+                    Router = router,
+                    DeviceType = DeviceType.DZS
+                });
 
-                            // Thêm dòng hiện tại
-                            queueString.Enqueue(line);
-
-                            // Thêm các dòng kết quả của lệnh show cho tới khi gặp lại tên thiết bị
-
-                            i++;
-                            line = lines[i];
-                            while (dicDeviceLog.Keys.Where(deviceName => line.StartsWith(deviceName)).Count() == 0)
-                            {
-                                queueString.Enqueue(line);
-                                i++;
-                                line = lines[i];
-                            }
-
-                            // Nếu ngay dòng tiếp theo sau kết quả của lệnh show tiếp đó
-                            // mà là 1 lệnh show mới thì tiến hành trừ i đi 1 để đọc lại đoạn show ở trên
-                            if (line.Replace(" ", "").ToLower().Contains("#show"))
-                            {
-                                i--;
-                            }
-
-                            break;
-                        }
-                    }
-                }
-            }
-
-            //4. Xuất excel từ bộ dữ liệu từ điển
-            DataTable dtResult = new DataTable();
-            foreach (string columnName in dicDeviceLog.Keys)
-            {
-                dtResult.Columns.Add(columnName, typeof(string));
-            }
-
-            int maxRow = dicDeviceLog.Values.Max(queue => queue.Count);
-            for (int i = 0; i < maxRow; i++)
-            {
-                DataRow drNewRow = dtResult.NewRow();
-
-                foreach (string columnName in dicDeviceLog.Keys)
+                deviceConfigs.Add(new DeviceConfig
                 {
-                    var queue = dicDeviceLog[columnName];
-                    if (queue.Count > 0)
-                    {
-                        drNewRow[columnName] = queue.Dequeue();
-                    }
-                }
-
-                dtResult.Rows.Add(drNewRow);
+                    Prefix = htbEnvironmentVariables["CISCO_PREFIX"].ToString(),
+                    Router = router,
+                    DeviceType = DeviceType.CISCO
+                });
             }
-
-            string fileName = "";//"txtLogPath.Text".Replace(Path.GetExtension(fdl.FileName), ".xlsx");
-            using (var workbook = new XLWorkbook())
-            {
-                var worksheet = workbook.Worksheets.Add(dtResult, "Sample Sheet");
-                workbook.SaveAs(fileName);
-            }
-
-            MessageBox.Show($"Convert Success.\nFile : {fileName}");
         }
 
         private void lblOpenConfigFile_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
@@ -197,40 +118,168 @@ namespace Log2Excel
 
         private void lblConvert_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
         {
+            CommandBlockManager commandBlockManager = new CommandBlockManager(
+                rounters: htbEnvironmentVariables["ROUTERS"].ToString().Split(';'),
+                deviceConfigs: deviceConfigs,
+                mapCommands: mapCommands);
 
+            string[] files = Directory.GetFiles(htbEnvironmentVariables["INPUT_PATH"].ToString());
+            var dicData = commandBlockManager.LoadDataLogFile(files);
+
+            ExportExcelHandler exportExcelHandler = new();
+            exportExcelHandler.Export(dicData: dicData,
+                deviceConfigs: deviceConfigs,
+                rounters: htbEnvironmentVariables["ROUTERS"].ToString().Split(';'),
+                commentName: htbEnvironmentVariables["COMMENT_NAME"].ToString(),
+                mapCommands: mapCommands,
+                outputPath: htbEnvironmentVariables["OUTPUT_PATH"].ToString());
         }
     }
 
     public class ExportExcelHandler
     {
-        public void Export(Queue<Queue<CommandBlockMapper>> commandBlockMappers)
+        public void Export(Dictionary<string, Dictionary<string, Dictionary<string, Queue<string>>>> dicData,
+            List<DeviceConfig> deviceConfigs,
+            string[] rounters,
+            string commentName,
+            List<CommandMapper> mapCommands,
+            string outputPath)
         {
+            string fileName = Path.Combine(outputPath, $"output_{Guid.NewGuid()}.xlsx");
+            using (var workbook = new XLWorkbook())
+            {
+                var worksheet = workbook.Worksheets.Add("RESULT");
 
+                worksheet.Style.Font.FontSize = 13;
+                worksheet.Style.Font.FontName = "Consolas";
+
+                // Generate Header
+                int headerRowIndex = 1;
+                for (int i = 0; i < rounters.Length; i++)
+                {
+                    // 3 = 2 cột cho router (dzs vs cisco) + 1 cột cho comment
+                    int cellIndex = i * 3 + 1;
+
+                    var cell = worksheet.Cell(headerRowIndex, cellIndex);
+
+                    cell.Value = rounters[i];
+                    cell.Style.Fill.BackgroundColor = XLColor.Black;
+                    cell.Style.Font.FontColor = XLColor.White;
+                    worksheet.Range(headerRowIndex, cellIndex, headerRowIndex, cellIndex + 1).Row(1).Merge();
+
+                    var commentCell = worksheet.Cell(headerRowIndex, cellIndex + 2);
+                    commentCell.Value = commentName;
+                    commentCell.Style.Fill.BackgroundColor = XLColor.LightCyan;
+                    commentCell.Style.Font.FontColor = XLColor.Black;
+
+                    // Next cell 
+                    var secondHeaderCellDZS = worksheet.Cell(headerRowIndex + 1, cellIndex);
+                    var secondHeaderCellCISCO = worksheet.Cell(headerRowIndex + 1, cellIndex + 1);
+                    var secondHeaderCellComment = worksheet.Cell(headerRowIndex + 1, cellIndex + 2);
+                    secondHeaderCellDZS.Value = "DZS";
+                    secondHeaderCellCISCO.Value = "CISCO";
+                    secondHeaderCellDZS.Style.Fill.BackgroundColor = XLColor.DarkRed;
+                    secondHeaderCellDZS.Style.Font.FontColor = XLColor.White;
+                    secondHeaderCellCISCO.Style.Fill.BackgroundColor = XLColor.DarkRed;
+                    secondHeaderCellCISCO.Style.Font.FontColor = XLColor.White;
+
+                    secondHeaderCellComment.Style.Fill.BackgroundColor = XLColor.LightCyan;
+                    worksheet.Range(commentCell, secondHeaderCellComment).Column(1).Merge();
+
+                    cell.WorksheetColumn().Width = 80;
+                    worksheet.Cell(headerRowIndex, cellIndex + 1).WorksheetColumn().Width = 80;
+                    commentCell.WorksheetColumn().Width = 30;
+                }
+
+                worksheet.Row(headerRowIndex).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+                worksheet.Row(headerRowIndex + 1).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+                worksheet.Row(headerRowIndex).Style.Font.FontSize = 20;
+                worksheet.Row(headerRowIndex + 1).Style.Font.FontSize = 20;
+                worksheet.Row(headerRowIndex).Style.Alignment.WrapText = true;
+                worksheet.Row(headerRowIndex + 1).Style.Alignment.WrapText = true;
+
+
+                // Generate body
+                int currentRowIndex = 3;
+
+                for (int i = 0; i < mapCommands.Count; i++)
+                {
+                    var key = mapCommands[i].Key;
+                    var dicRouters = dicData[key];
+
+                    int maxRouterLines = 0;
+                    int routerRowIndex = currentRowIndex;
+                    worksheet.Range(currentRowIndex, 1, currentRowIndex, rounters.Length * 3).Style.Fill.BackgroundColor = XLColor.Yellow;
+
+                    for (int j = 0; j < rounters.Length; j++)
+                    {
+                        currentRowIndex = routerRowIndex;
+
+                        var rounter = rounters[j];
+                        var devices = dicRouters[rounter];
+
+                        var devicesName = deviceConfigs.Where(d => d.Router == rounter)
+                            .OrderBy(d => d.DeviceType);
+
+                        for (int k = 0; k < devicesName.Count(); k++)
+                        {
+                            var queueLog = devices[devicesName.ElementAt(k).Name];
+
+                            if (maxRouterLines < queueLog.Count())
+                            {
+                                maxRouterLines = queueLog.Count();
+                            }
+
+                            while (queueLog.Count() > 0)
+                            {
+                                string content = queueLog.Dequeue();
+
+                                int cellIndex = j * 3 + 1 + k;
+                                worksheet.Cell(currentRowIndex, cellIndex);
+                                currentRowIndex++;
+                            }
+
+                        }
+                    }
+
+                    currentRowIndex += maxRouterLines + 2; // 2 là 2 dòng trống
+
+                    worksheet.Range(currentRowIndex, 1, currentRowIndex, rounters.Length * 3).Style.Fill.BackgroundColor = XLColor.Black;
+                    currentRowIndex++;
+                }
+
+                workbook.SaveAs(fileName);
+            }
+
+            MessageBox.Show($"Convert Success.");
+
+            var p = new Process();
+            p.StartInfo = new ProcessStartInfo(fileName)
+            {
+                UseShellExecute = true
+            };
+            p.Start();
         }
     }
 
-    /*
-     Bước 1 : Chuẩn bị dữ liệu
-        htb (r1, htb {(dzs_r1, ((command, reuslt)), (cisco_r1, ((command, reuslt))})
-        htb (r2, htb {(dzs_r2, ((command, reuslt)), (cisco_r2, ((command, reuslt))})
-        htb (r3, htb {(dzs_r3, ((command, reuslt)), (cisco_r3, ((command, reuslt))})
-     Bước 2 : Gom nhóm dữ liệu
-        - Chuyển về dạng QueueMapper
-     Bước 3 : Export excel 
-    */
     public class CommandBlockManager
     {
-        private readonly string[] _rounter;
-        private readonly string _dzsPrefix;
-        private readonly string _ciscoPrefix;
+        private readonly string[] _routers;
+        private readonly List<CommandMapper> _mapCommands;
+        private readonly string[] _combieCommands;
+        private readonly List<DeviceConfig> _deviceConfigs;
 
-        Hashtable htbRouters = new Hashtable();
-
-        public CommandBlockManager(string[] rounter, string dzsPrefix, string ciscoPrefix)
+        public CommandBlockManager(string[] rounters,
+            List<DeviceConfig> deviceConfigs,
+            List<CommandMapper> mapCommands)
         {
-            _rounter = rounter;
-            _dzsPrefix = dzsPrefix;
-            _ciscoPrefix = ciscoPrefix;
+            _routers = rounters;
+            _mapCommands = mapCommands;
+            _combieCommands = _mapCommands.Select(c => c.DzsCommand)
+                                    .Concat(_mapCommands.Select(c => c.CiscoCommnad))
+                                    .Where(c => !string.IsNullOrEmpty(c))
+                                    .ToArray();
+            _deviceConfigs = deviceConfigs;
         }
 
 
@@ -239,18 +288,122 @@ namespace Log2Excel
         /// </summary>
         /// <param name="files"></param>
         /// <returns></returns>
-        public Queue<Queue<CommandBlockMapper>> LoadDataLogFile(string[] files)
+        public Dictionary<string, Dictionary<string, Dictionary<string, Queue<string>>>> LoadDataLogFile(string[] files)
         {
-            Queue<Queue<CommandBlockMapper>> CommandBlockMappers = new();
-
-            foreach (string file in files)
+            // 2. Tạo bảng lưu trữ
+            /* Cấu trúc lưu trữ data
+            - INDEX : 1
+                + R1 
+                    + DZS_DEVICE_NAME - Queue<string>
+                    + CISO_DEVICE_NAME - Queue<string>
+                + R2
+                    + DZS_DEVICE_NAME - Queue<string>
+                    + CISO_DEVICE_NAME - Queue<string>
+                ....
+            - INDEX : 2
+                + R1 
+                    + DZS_DEVICE_NAME - Queue<string>
+                    + CISO_DEVICE_NAME - Queue<string>
+                + R2
+                    + DZS_DEVICE_NAME - Queue<string>
+                    + CISO_DEVICE_NAME - Queue<string>
+                ....
+            - INDEX : n
+            */
+            Dictionary<string, Dictionary<string, Dictionary<string, Queue<string>>>> dicData = new();
+            foreach (var mapCommand in _mapCommands)
             {
+                string index = mapCommand.Key;
 
+                Dictionary<string, Dictionary<string, Queue<string>>> dicRouters = new();
+                foreach (var router in _routers)
+                {
+                    Dictionary<string, Queue<string>> dicDevices = new();
+                    foreach (var deviceConfig in _deviceConfigs.Where(d => d.Router == router))
+                    {
+                        dicDevices.Add($"{deviceConfig.Prefix}{deviceConfig.Router}", new Queue<string>());
+                    }
+
+                    dicRouters.Add(router, dicDevices);
+                }
+
+                dicData.Add(index, dicRouters);
             }
 
-            return CommandBlockMappers;
-        }
 
+            //3. Duyệt các dòng, ghi dữ liệu vào Hashtable
+            List<string> lines = new();
+
+            foreach (var file in files)
+            {
+                var currentLines = File.ReadAllLines(file);
+
+                lines = lines.Concat(currentLines).ToList();
+            }
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string line = lines[i];
+
+                foreach (var mapCommand in _mapCommands)
+                {
+                    bool isBreakManually = false;
+                    string key = mapCommand.Key;
+
+                    string dzsCommand = mapCommand.DzsCommand;
+                    string ciscoCommand = mapCommand.CiscoCommnad;
+
+                    foreach (string command in new string[] { dzsCommand, ciscoCommand })
+                    {
+                        if (!string.IsNullOrEmpty(command) && line.Contains($"#{command}"))
+                        {
+                            var currentDeviceConfig = _deviceConfigs
+                                .FirstOrDefault(d => line.StartsWith(d.Prefix) && line.Contains(d.Router));
+
+                            if (currentDeviceConfig != null)
+                            {
+                                var dicRouter = dicData[key][currentDeviceConfig.Router];
+                                var queueLog = dicRouter[$"{currentDeviceConfig.Prefix}{currentDeviceConfig.Router}"] as Queue<string>;
+
+                                // Thêm dòng hiện tại
+                                queueLog.Enqueue(line);
+
+                                // Thêm các dòng kết quả của lệnh show cho tới khi gặp lại tên thiết bị
+
+                                i++;
+                                line = lines[i];
+                                while (_deviceConfigs.Count(d => line.StartsWith(d.Prefix) && line.Contains(d.Router)) == 0)
+                                {
+                                    queueLog.Enqueue(line);
+                                    i++;
+                                    line = lines[i];
+                                }
+
+                                // Nếu ngay dòng tiếp theo sau kết quả của lệnh show tiếp đó
+                                // mà là 1 lệnh show mới thì tiến hành trừ i đi 1 để đọc lại đoạn show ở trên
+                                foreach (var commandString in _combieCommands)
+                                {
+                                    if (line.ToLower().Contains(commandString))
+                                    {
+                                        i--;
+                                    }
+                                }
+
+                                isBreakManually = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (isBreakManually)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            return dicData;
+        }
     }
 
     public class CommandBlockMapper
@@ -298,5 +451,26 @@ namespace Log2Excel
         }
 
         public int Length => Contents == null ? 0 : Contents.Count;
+    }
+
+    public class DeviceConfig
+    {
+        public string Prefix { get; set; }
+        public string Router { get; set; }
+        public DeviceType DeviceType { get; set; }
+        public string Name => Prefix + Router;
+    }
+
+    public class CommandMapper
+    {
+        public string Key;
+        public string DzsCommand { get; set; }
+        public string CiscoCommnad { get; set; }
+    }
+
+    public enum DeviceType
+    {
+        DZS,
+        CISCO
     }
 }
