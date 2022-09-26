@@ -203,23 +203,54 @@ namespace Log2Excel
 
     public class ExportExcelHandler
     {
-        public void Export(List<CommandBlockMapper> commandBlockMappers)
+        public void Export(Queue<Queue<CommandBlockMapper>> commandBlockMappers)
         {
 
         }
     }
 
+    /*
+     Bước 1 : Chuẩn bị dữ liệu
+        htb (r1, htb {(dzs_r1, ((command, reuslt)), (cisco_r1, ((command, reuslt))})
+        htb (r2, htb {(dzs_r2, ((command, reuslt)), (cisco_r2, ((command, reuslt))})
+        htb (r3, htb {(dzs_r3, ((command, reuslt)), (cisco_r3, ((command, reuslt))})
+     Bước 2 : Gom nhóm dữ liệu
+        - Chuyển về dạng QueueMapper
+     Bước 3 : Export excel 
+    */
     public class CommandBlockManager
     {
-        public List<CommandBlockMapper> LoadDataLogFile(string[] files)
+        private readonly string[] _rounter;
+        private readonly string _dzsPrefix;
+        private readonly string _ciscoPrefix;
+
+        Hashtable htbRouters = new Hashtable();
+
+        public CommandBlockManager(string[] rounter, string dzsPrefix, string ciscoPrefix)
         {
+            _rounter = rounter;
+            _dzsPrefix = dzsPrefix;
+            _ciscoPrefix = ciscoPrefix;
+        }
+
+
+        /// <summary>
+        /// Đọc file, chuyển sang một mảng 2 chiều các phần tử
+        /// </summary>
+        /// <param name="files"></param>
+        /// <returns></returns>
+        public Queue<Queue<CommandBlockMapper>> LoadDataLogFile(string[] files)
+        {
+            Queue<Queue<CommandBlockMapper>> CommandBlockMappers = new();
+
             foreach (string file in files)
             {
 
             }
 
-            return new List<CommandBlockMapper>();
+            return CommandBlockMappers;
         }
+
     }
 
     public class CommandBlockMapper
