@@ -213,8 +213,6 @@ namespace Log2Excel
 
                     for (int j = 0; j < rounters.Length; j++)
                     {
-                        currentRowIndex = routerRowIndex;
-
                         var rounter = rounters[j];
                         var devices = dicRouters[rounter];
 
@@ -223,6 +221,8 @@ namespace Log2Excel
 
                         for (int k = 0; k < devicesName.Count(); k++)
                         {
+                            currentRowIndex = routerRowIndex;
+
                             var queueLog = devices[devicesName.ElementAt(k).Name];
 
                             if (maxRouterLines < queueLog.Count())
@@ -235,14 +235,14 @@ namespace Log2Excel
                                 string content = queueLog.Dequeue();
 
                                 int cellIndex = j * 3 + 1 + k;
-                                worksheet.Cell(currentRowIndex, cellIndex);
+                                worksheet.Cell(currentRowIndex, cellIndex).Value = content;
                                 currentRowIndex++;
                             }
 
                         }
                     }
 
-                    currentRowIndex += maxRouterLines + 2; // 2 là 2 dòng trống
+                    currentRowIndex = maxRouterLines + 2; // 2 là 2 dòng trống
 
                     worksheet.Range(currentRowIndex, 1, currentRowIndex, rounters.Length * 3).Style.Fill.BackgroundColor = XLColor.Black;
                     currentRowIndex++;
@@ -355,7 +355,7 @@ namespace Log2Excel
 
                     foreach (string command in new string[] { dzsCommand, ciscoCommand })
                     {
-                        if (!string.IsNullOrEmpty(command) && line.Contains($"#{command}"))
+                        if (!string.IsNullOrEmpty(command) && line.Contains(command))
                         {
                             var currentDeviceConfig = _deviceConfigs
                                 .FirstOrDefault(d => line.StartsWith(d.Prefix) && line.Contains(d.Router));
