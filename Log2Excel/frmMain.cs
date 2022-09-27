@@ -186,8 +186,8 @@ namespace Log2Excel
                     secondHeaderCellComment.Style.Fill.BackgroundColor = XLColor.LightCyan;
                     worksheet.Range(commentCell, secondHeaderCellComment).Column(1).Merge();
 
-                    cell.WorksheetColumn().Width = 80;
-                    worksheet.Cell(headerRowIndex, cellIndex + 1).WorksheetColumn().Width = 80;
+                    cell.WorksheetColumn().Width = 160;
+                    worksheet.Cell(headerRowIndex, cellIndex + 1).WorksheetColumn().Width = 160;
                     commentCell.WorksheetColumn().Width = 30;
                 }
 
@@ -242,7 +242,7 @@ namespace Log2Excel
                         }
                     }
 
-                    currentRowIndex = maxRouterLines + 2; // 2 là 2 dòng trống
+                    currentRowIndex = routerRowIndex + maxRouterLines + 2; // 2 là 2 dòng trống
 
                     worksheet.Range(currentRowIndex, 1, currentRowIndex, rounters.Length * 3).Style.Fill.BackgroundColor = XLColor.Black;
                     currentRowIndex++;
@@ -355,7 +355,15 @@ namespace Log2Excel
 
                     foreach (string command in new string[] { dzsCommand, ciscoCommand })
                     {
-                        if (!string.IsNullOrEmpty(command) && line.Contains(command))
+                        var elements = line.Split('#');
+                        if (elements.Length < 2)
+                        {
+                            continue;
+                        }
+
+                        string commandInLine = elements[1];
+
+                        if (!string.IsNullOrEmpty(command) && commandInLine.Trim() == command.Trim())
                         {
                             var currentDeviceConfig = _deviceConfigs
                                 .FirstOrDefault(d => line.StartsWith(d.Prefix) && line.Contains(d.Router));
