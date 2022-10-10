@@ -88,18 +88,25 @@ namespace Log2Excel
             }
 
             // Load device config
-            foreach (string router in htbEnvironmentVariables["ROUTERS"].ToString().Split(';'))
+            var routers = htbEnvironmentVariables["ROUTERS"].ToString().Split(';');
+            var dszPrefixDevices = htbEnvironmentVariables["DZS_PREFIX"].ToString().Split(';');
+            var ciscoPrefixDevices = htbEnvironmentVariables["CISCO_PREFIX"].ToString().Split(';');
+            for (int i = 0; i < routers.Length; i++)
             {
+                string router = routers[i];
+                string dzsPrefix = dszPrefixDevices[i];
+                string ciscoPrefix = ciscoPrefixDevices[i];
+
                 deviceConfigs.Add(new DeviceConfig
                 {
-                    Prefix = htbEnvironmentVariables["DZS_PREFIX"].ToString(),
+                    Prefix = dzsPrefix,
                     Router = router,
                     DeviceType = DeviceType.DZS
                 });
 
                 deviceConfigs.Add(new DeviceConfig
                 {
-                    Prefix = htbEnvironmentVariables["CISCO_PREFIX"].ToString(),
+                    Prefix = ciscoPrefix,
                     Router = router,
                     DeviceType = DeviceType.CISCO
                 });
