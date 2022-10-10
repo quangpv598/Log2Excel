@@ -387,7 +387,7 @@ namespace Log2Excel
 
                                 i++;
                                 line = lines[i];
-                                while (_deviceConfigs.Count(d => line.StartsWith(d.Prefix) && line.Contains(d.Router)) == 0)
+                                while (_deviceConfigs.Count(d => line.StartsWith(d.Prefix) && line.Contains(d.Router) && line.Contains("#")) == 0)
                                 {
                                     queueLog.Enqueue(line);
                                     i++;
